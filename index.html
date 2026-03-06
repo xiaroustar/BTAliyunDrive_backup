@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>阿里云盘备份插件</title>
+  <style>
+    .aliyun-wrap { padding: 15px; font-size: 13px; }
+    .aliyun-title { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+    .aliyun-section { margin-bottom: 20px; border: 1px solid #e5e5e5; padding: 15px; border-radius: 3px; }
+    .aliyun-section h3 { margin: 0 0 10px 0; font-size: 14px; }
+    .aliyun-row { margin-top: 10px; }
+    .aliyun-label { display: inline-block; width: 90px; color: #666; }
+    .aliyun-status { color: #409eff; }
+    .aliyun-btn { display: inline-block; padding: 5px 12px; background: #20a53a; color: #fff; border-radius: 2px; cursor: pointer; font-size: 12px; }
+    .aliyun-btn.gray { background: #999; }
+    .aliyun-qrcode { margin-top: 10px; }
+    .aliyun-qrcode img { width: 180px; height: 180px; border: 1px solid #eee; }
+    .aliyun-log { margin-top: 8px; color: #999; max-height: 80px; overflow: auto; background: #fafafa; padding: 5px; border-radius: 2px; border: 1px solid #eee; }
+    .aliyun-pane { display: none; }
+    .aliyun-pane-active { display: block; }
+  </style>
+</head>
+<body>
+<div class="bt-form">
+  <div class="bt-w-main aliyundrive-backup">
+    <!-- 左侧菜单 -->
+    <div class="bt-w-menu bt-soft-menu">
+      <p class="bgw" data-pane="aliyun-pane-login">登录账号</p>
+      <p data-pane="aliyun-pane-backup">测试功能</p>
+      <p data-pane="aliyun-pane-web">站点备份</p>
+      <p data-pane="aliyun-pane-db">数据库备份</p>
+      <p data-pane="aliyun-pane-cron">自动化服务</p>
+      <p data-pane="aliyun-pane-log">上传记录</p>
+      <p data-pane="aliyun-pane-config">偏好设置</p>
+      <p data-pane="aliyun-pane-about">使用及鸣谢</p>
+    </div>
+    <!-- 右侧内容 -->
+    <div class="bt-w-con pd15">
+      <div class="plugin_body">
+        <div class="aliyun-wrap">
+          <div class="aliyun-title">阿里云盘备份（明心安备）</div>
+          <div style="margin-bottom:10px;color:#888;">
+            实现宝塔面板的网站及数据库数据备份至阿里网盘。<br>
+          </div>
+
+          <!-- 登录账号 -->
+          <div id="aliyun-pane-login" class="aliyun-pane aliyun-pane-active">
+            <!-- 登录状态（大号显示） -->
+            <div class="aliyun-section" id="aliyun-login-status-section">
+              <h3>登录状态</h3>
+              <div class="aliyun-row" style="padding:20px; background:#f5f5f5; border-radius:5px; margin-top:10px;">
+                <div style="text-align:center; width:100%;">
+                  <div id="aliyun-login-status-big" style="font-size:18px; font-weight:bold; margin-bottom:10px;">
+                    <span id="aliyun-login-status-text">加载中...</span>
+                  </div>
+                  <div id="aliyun-login-status-detail" style="color:#666; font-size:13px; margin-top:5px;">
+                    <span id="aliyun-login-status-detail-text">正在检查登录状态...</span>
+                  </div>
+                </div>
+              </div>
+              <div class="aliyun-row" style="margin-top:15px; text-align:center;">
+                <span class="aliyun-btn" id="aliyun-btn-refresh-status">刷新状态</span>
+              </div>
+            </div>
+
+            <!-- 扫码登录 -->
+            <div class="aliyun-section" id="aliyun-qrcode-section">
+              <h3 id="aliyun-qrcode-section-title">扫码登录阿里云盘</h3>
+              <div class="aliyun-row">
+                <span class="aliyun-label">操作：</span>
+                <span class="aliyun-btn" id="aliyun-btn-get-qrcode">获取二维码</span>
+                <span class="aliyun-btn gray" id="aliyun-btn-logout" style="margin-left:8px; display:none;">退出登录</span>
+              </div>
+              <div class="aliyun-row aliyun-qrcode" id="aliyun-qrcode-box" style="display:none; text-align:center; padding:20px;">
+                <div style="margin-bottom:10px;">
+                  <img id="aliyun-qrcode-img" src="" alt="登录二维码" style="max-width:300px; border:2px solid #ddd; border-radius:5px;">
+                </div>
+                <div style="color:#666; font-size:12px; margin-top:10px;">
+                  请使用阿里云盘 App 扫描上方二维码
+                </div>
+              </div>
+              <div class="aliyun-row" id="aliyun-login-result-row" style="display:none;">
+                <div style="padding:10px; background:#e8f5e9; border-left:4px solid #4caf50; border-radius:3px; margin-top:10px;">
+                  <strong style="color:#2e7d32;">✓ 登录成功</strong>
+                  <div id="aliyun-login-result" style="color:#555; margin-top:5px; font-size:13px;">已成功登录阿里云盘</div>
+                </div>
+              </div>
+              <div class="aliyun-log" id="aliyun-login-log" style="display:none;"></div>
+            </div>
+          </div>
+
+          <!-- 目录与上传 -->
+          <div id="aliyun-pane-backup" class="aliyun-pane">
+            <!-- 测试上传 -->
+            <div class="aliyun-section">
+              <h3>测试上传文件到阿里云盘</h3>
+              <div class="aliyun-row">
+                <span class="aliyun-label">操作：</span>
+                <span class="aliyun-btn" id="aliyun-btn-test-upload">上传测试</span>
+              </div>
+              <div class="aliyun-log" id="aliyun-upload-log" style="display:none;"></div>
+            </div>
+
+            <!-- 文件列表 -->
+            <div class="aliyun-section">
+              <h3>授权目录文件列表</h3>
+              <div class="aliyun-row">
+                <span class="aliyun-label">当前目录：</span>
+                <span id="aliyun-current-path">/</span>
+              </div>
+              <div class="aliyun-row" style="margin-top:6px;">
+                <span class="aliyun-label">操作：</span>
+                <span class="aliyun-btn" id="aliyun-btn-list-root">刷新目录</span>
+                <span class="aliyun-btn gray" id="aliyun-btn-go-up" style="margin-left:8px;">返回上一级</span>
+              </div>
+              <div class="aliyun-row" id="aliyun-files-container" style="margin-top:10px; max-height:260px; overflow:auto; display:none;">
+                <table class="table table-hover" style="width:100%; font-size:12px;">
+                  <thead>
+                    <tr>
+                      <th style="width:55%;">名称</th>
+                      <th style="width:15%;">类型</th>
+                      <th style="width:15%;">大小</th>
+                      <th style="width:15%;">更新时间</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aliyun-files-body">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 站点备份 -->
+          <div id="aliyun-pane-web" class="aliyun-pane">
+            <div class="aliyun-section">
+              <h3>站点备份</h3>
+              <div class="aliyun-row">
+                同步状态置为【开启】后，在后续的手动/自动备份任务中，将自动把对应站点目录压缩并上传到阿里云盘。
+              </div>
+              <div class="aliyun-row" style="margin-top:10px;">
+                <table class="table table-hover waf_table fixed-table" style="width:100%; font-size:12px;">
+                  <thead>
+                    <tr>
+                      <th style="width:30%;">站点</th>
+                      <th style="width:50%;">目录</th>
+                      <th style="width:20%;">同步状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aliyun-web-body">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 数据库备份 -->
+          <div id="aliyun-pane-db" class="aliyun-pane">
+            <div class="aliyun-section">
+              <h3>数据库备份</h3>
+              <div class="aliyun-row">
+                同步状态置为【开启】后，在后续的手动/自动备份任务中，将自动把对应数据库导出并上传到阿里云盘。
+              </div>
+              <div class="aliyun-row" style="margin-top:15px; padding:10px; background:#fff3cd; border-radius:3px;">
+                <strong style="color:#856404;">配置说明：</strong>
+                <div style="margin-top:5px; color:#856404; font-size:12px;">
+                  1. 请先配置 MySQL 端口和 root 密码，然后点击【同步】按钮保存配置<br>
+                  2. 配置完成后，勾选需要备份的数据库<br>
+                  3. 数据库备份需要 MySQL root 权限，请确保密码正确
+                </div>
+              </div>
+              <div class="aliyun-row" style="margin-top:15px;">
+                <span class="aliyun-label">数据库端口：</span>
+                <input type="text" id="aliyun-db-port" class="bt-input-text" value="3306" style="width:150px; margin-right:20px;">
+                <br><span class="aliyun-label">root 密码：</span>
+                <input type="text" id="aliyun-db-password" class="bt-input-text" placeholder="请输入 MySQL root 密码" style="width:200px; margin-right:10px;">
+                <br><span class="aliyun-btn" id="aliyun-btn-save-db-config">同步</span>
+              </div>
+              <div class="aliyun-row" style="margin-top:10px; color:#666; font-size:12px;">
+                <span class="aliyun-label"></span>
+                <a href="/database" target="_blank" class="btlink">查看 MySQL root 密码</a>
+              </div>
+              <div class="aliyun-row" style="margin-top:15px;">
+                <table class="table table-hover waf_table fixed-table" style="width:100%; font-size:12px;">
+                  <thead>
+                    <tr>
+                      <th style="width:30%;">数据库</th>
+                      <th style="width:50%;">备注</th>
+                      <th style="width:20%;">同步状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aliyun-db-body">
+                    <tr><td colspan="3">正在加载数据库列表...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 自动备份服务 -->
+          <div id="aliyun-pane-cron" class="aliyun-pane">
+            <div class="aliyun-section">
+              <h3>自动备份服务</h3>
+              <div class="aliyun-row">
+                <span class="aliyun-label">状态：</span>
+                <span id="aliyun-cron-status" class="aliyun-status">加载中...</span>
+              </div>
+              <div class="aliyun-row" style="margin-top:10px;">
+                <span class="aliyun-label">操作：</span>
+                <span class="aliyun-btn" id="aliyun-btn-add-cron">启动自动化备份服务</span>
+                <span class="aliyun-btn gray" id="aliyun-btn-stop-cron" style="margin-left:8px;">停止自动化任务</span>
+              </div>
+              <div class="aliyun-row" style="margin-top:10px; color:#666; font-size:12px;">
+                <span class="aliyun-label"></span>
+                添加的计划任务名为：<span id="aliyun-cron-title">[阿里云盘免费备份插件]守护任务(勿删)</span>，
+                <a href="/crontab" target="_blank" class="btlink">查看任务</a>
+              </div>
+              <div class="aliyun-row" style="margin-top:10px; color:#666; font-size:12px;">
+                <span class="aliyun-label"></span>
+                默认创建的自动计划任务执行时间为每天凌晨 02:30 执行
+              </div>
+              <hr style="margin:15px 0;">
+<!--              <div class="aliyun-row" style="margin-top:10px;">-->
+<!--                <span class="aliyun-label">手动备份：</span>-->
+<!--                <span class="aliyun-btn" id="aliyun-btn-start-task">主动执行一次队列</span>-->
+<!--              </div>-->
+<!--              <div class="aliyun-row" style="margin-top:10px; color:#666; font-size:12px;">-->
+<!--                <span class="aliyun-label"></span>-->
+<!--                1、可直接启动上传备份队列，适用于少量站点与数据库备份<br>-->
+<!--                2、尽量不要在流量高峰运行，会占用带宽与服务器资源<br>-->
+<!--                3、此为手动执行队列，只会执行一次，一般用于测试-->
+<!--              </div>-->
+            </div>
+          </div>
+
+          <!-- 上传记录 -->
+          <div id="aliyun-pane-log" class="aliyun-pane">
+            <div class="aliyun-section">
+              <h3>上传记录</h3>
+              <div class="aliyun-row">
+                <span class="aliyun-label">操作：</span>
+                <span class="aliyun-btn" id="aliyun-btn-refresh-log">刷新记录</span>
+                <span class="aliyun-btn gray" id="aliyun-btn-clear-log" style="margin-left:8px;">清空记录</span>
+              </div>
+              <div class="aliyun-row" style="margin-top:10px; color:#666; font-size:12px;">
+                <span class="aliyun-label"></span>
+                备份记录，<a href='https://www.aliyundrive.com/drive' class='btlink' target='_blank'>网页端【阿里云盘】空间</a>，存储目录为【BTBackup】
+              </div>
+              <div class="aliyun-row" style="margin-top:10px;">
+                <div id="aliyun-log-content" style="max-height:400px; overflow:auto; background:#fafafa; padding:10px; border:1px solid #eee; border-radius:3px;">
+                  <p>正在加载日志...</p>
+                </div>
+              </div>
+              <div class="aliyun-row" style="margin-top:10px; color:#999; font-size:12px;">
+                <span class="aliyun-label"></span>
+                注意：为避免日志内容过于冗杂，只有上传成功的事件，才会写入记录。
+              </div>
+            </div>
+          </div>
+
+          <!-- 偏好设置 -->
+          <div id="aliyun-pane-config" class="aliyun-pane">
+            <div class="aliyun-section">
+              <h3>偏好设置</h3>
+              
+              <!-- 备份数量限制 -->
+              <div class="aliyun-row" style="margin-top:15px;">
+                <h4 style="margin-bottom:10px; color:#333;">备份数量限制</h4>
+                <div class="aliyun-row">
+                  <span class="aliyun-label">站点逻辑：</span>
+                  <input type="number" id="aliyun-config-site-keep" class="bt-input-text" value="10" min="0" max="999" style="width:100px; margin-right:20px;">
+                  <span style="color:#666; font-size:12px;">保留最新的备份文件数量，超过此数量将自动删除旧文件（0=不限制）</span>
+                </div>
+                <div class="aliyun-row" style="margin-top:10px;">
+                  <span class="aliyun-label">数据库逻辑：</span>
+                  <input type="number" id="aliyun-config-db-keep" class="bt-input-text" value="10" min="0" max="999" style="width:100px; margin-right:20px;">
+                  <span style="color:#666; font-size:12px;">保留最新的备份文件数量，超过此数量将自动删除旧文件（0=不限制）</span>
+                </div>
+              </div>
+
+              <hr style="margin:20px 0;">
+
+              <!-- 文件过滤设置 -->
+              <div class="aliyun-row" style="margin-top:15px;">
+                <h4 style="margin-bottom:10px; color:#333;">文件过滤设置</h4>
+                <div class="aliyun-row">
+                  <span class="aliyun-label">排除文件扩展名：</span>
+                  <div style="display:inline-block; width:100%; margin-top:5px;">
+                    <textarea id="aliyun-config-ext-map" class="bt-input-text" rows="6" style="width:100%; max-width:500px;height:80px;" placeholder="log&#10;tmp&#10;cache&#10;每行一个扩展名，不用加点"></textarea>
+                    <div style="color:#666; font-size:12px; margin-top:5px;">
+                      排除指定扩展名的文件，每行一个，不用加点（如：log、tmp、cache）。针对站点备份生效。
+                    </div>
+                  </div>
+                </div>
+                <div class="aliyun-row" style="margin-top:15px;">
+                  <span class="aliyun-label">排除目录：</span>
+                  <div style="display:inline-block; width:100%; margin-top:5px;">
+                    <textarea id="aliyun-config-exclude-dirs" class="bt-input-text" rows="4" style="width:100%; max-width:500px;height:80px;" placeholder="node_modules&#10;.git&#10;.svn&#10;每行一个目录名"></textarea>
+                    <div style="color:#666; font-size:12px; margin-top:5px;">
+                      排除指定名称的目录，每行一个（如：node_modules、.git、.svn）。针对站点备份生效。
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <hr style="margin:20px 0;">
+
+              <!-- 保存按钮 -->
+              <div class="aliyun-row" style="margin-top:20px; text-align:center;">
+                <span class="aliyun-btn" id="aliyun-btn-save-config">保存配置</span>
+                <span class="aliyun-btn gray" id="aliyun-btn-reset-config" style="margin-left:10px;">恢复默认</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 使用说明 -->
+          <div id="aliyun-pane-about" class="aliyun-pane">
+            <div class="aliyun-section">
+              <h3>使用说明</h3>
+              <div class="aliyun-row">
+                支持增量备份 保留最新备份文件数量<br>
+                支持过滤文件名备份逻辑<br>
+                支持过滤目录名备份逻辑<br>
+                备份支持按照网站/数据库名称创建目录进行指定备份 便于管理<br>
+              </div>
+            </div>
+            
+            <!-- 版本检测 -->
+            <div class="aliyun-section" style="margin-top:20px;">
+              <h3>版本信息</h3>
+              <div class="aliyun-row">
+                <span class="aliyun-label">当前版本：</span>
+                <span id="aliyun-current-version" style="font-weight:bold;">加载中...</span>
+                <span class="aliyun-btn" id="aliyun-btn-check-version" style="margin-left:10px;">检查更新</span>
+              </div>
+              <div id="aliyun-version-info" style="margin-top:10px; display:none;">
+                <div id="aliyun-version-message" style="padding:10px; border-radius:3px;"></div>
+                <div id="aliyun-version-changelog" style="margin-top:10px; padding:10px; background:#f5f5f5; border-radius:3px; display:none;">
+                  <strong>更新说明：</strong>
+                  <pre id="aliyun-version-changelog-content" style="margin-top:5px; white-space:pre-wrap; font-size:12px;"></pre>
+                </div>
+                <div id="aliyun-version-download" style="margin-top:10px; display:none;">
+                  <a id="aliyun-version-download-link" href="#" target="_blank" class="aliyun-btn">下载新版本</a>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 开发人员及赞助商 -->
+            <div class="aliyun-section" style="margin-top:20px;">
+              <h3>开发人员及赞助商</h3>
+              <div id="aliyun-dev-info-list" class="aliyun-row" style="margin-top:10px;">
+                <div style="text-align:center; color:#999;">加载中...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!--<script src="/static/js/jquery-1.10.2.min.js"></script>-->
+<script>
+;(function () {
+  var pollingTimer = null;
+  var currentLoginId = null;
+  var pollingStartTime = 0;
+  var currentParentId = 'root';
+  var navStack = []; // {file_id, name}
+  var sitesLoaded = false;
+  var databasesLoaded = false;
+
+  function api(action, data, cb) {
+    data = data || {};
+    $.post('/plugin?action=a&name=aliyundrive_backup&s=' + action, data, function (res) {
+      cb && cb(res || {});
+    }, 'json').fail(function () {
+      cb && cb({status: false, msg: '请求失败，请检查网络或登录状态。'});
+    });
+  }
+
+  function setLoginStatus(text, isLoggedIn) {
+    // 更新状态文本
+    var $statusText = $('#aliyun-login-status-text');
+    var $statusIcon = $('#aliyun-login-status-icon');
+    var $statusDetail = $('#aliyun-login-status-detail-text');
+    var $statusSection = $('#aliyun-login-status-section');
+    var $qrcodeSection = $('#aliyun-qrcode-section');
+    var $getQrcodeBtn = $('#aliyun-btn-get-qrcode');
+    var $logoutBtn = $('#aliyun-btn-logout');
+    var $qrcodeBox = $('#aliyun-qrcode-box');
+    var $resultRow = $('#aliyun-login-result-row');
+    
+    if (isLoggedIn) {
+      // 已登录状态
+      $statusText.text('已登录');
+      $statusIcon.text('✓').css('color', '#4caf50');
+      $statusText.css('color', '#2e7d32');
+      $statusDetail.text('您可以进行备份操作了');
+      $statusSection.css('background', 'transparent');
+      
+      // 按钮文字改为"更换账号"
+      $getQrcodeBtn.text('更换账号');
+      $logoutBtn.show();
+      
+      // 隐藏二维码和登录日志
+      $qrcodeBox.hide();
+      $('#aliyun-login-log').hide();
+      
+      // 显示登录成功提示（如果之前有）
+      if ($resultRow.is(':visible')) {
+        $('#aliyun-login-result').text('已成功登录阿里云盘，可以开始使用备份功能');
+      }
+    } else {
+      // 未登录状态
+      $statusText.text('未登录');
+      $statusIcon.text('⚠').css('color', '#ff9800');
+      $statusText.css('color', '#f57c00');
+      $statusDetail.text('请先扫码登录才能使用备份功能');
+      
+      // 按钮文字改为"获取二维码"
+      $getQrcodeBtn.text('获取二维码');
+      $logoutBtn.hide();
+      
+      // 隐藏登录成功提示
+      $resultRow.hide();
+    }
+  }
+
+  function appendLog(el, text) {
+    var $el = $(el);
+    $el.show();
+    var now = new Date().toLocaleTimeString();
+    $el.append('[' + now + '] ' + text + '\n');
+    $el.scrollTop($el[0].scrollHeight);
+  }
+
+  function refreshStatus() {
+    api('index', {}, function (res) {
+      if (!res.status) {
+        setLoginStatus('获取状态失败：' + (res.msg || '未知错误'), false);
+        return;
+      }
+      var logined = res.data && res.data.logined;
+      setLoginStatus('', logined);
+      // 如果已经确认登录，则强制停止轮询，避免重复日志
+      if (logined) {
+        stopPolling();
+        // 隐藏二维码区域
+        $('#aliyun-qrcode-box').hide();
+      }
+    });
+  }
+
+  function startPolling(loginId) {
+    stopPolling();
+    currentLoginId = loginId;
+    pollingStartTime = Date.now();
+    pollingTimer = setInterval(function () {
+      // 超过 2 分钟自动停止轮询，避免一直刷日志
+      if (Date.now() - pollingStartTime > 120000) {
+        appendLog('#aliyun-login-log', '轮询已超过 2 分钟，自动停止。如需再次登录，请重新获取二维码。');
+        stopPolling();
+        return;
+      }
+      api('check_login_status', {login_id: loginId}, function (res) {
+        if (!res.status) {
+          appendLog('#aliyun-login-log', '轮询失败：' + (res.msg || '未知错误'));
+          return;
+        }
+        var data = res.data || {};
+        var status = data.login_status || 'unknown';
+        // 只在非成功状态时显示日志，避免刷屏
+        // 注意：WaitLogin 状态不应该在日志中显示，因为这是正常的等待状态
+        if (status !== 'LoginSuccess' && status !== 'success' && status !== 'confirmed' && status !== 'WaitLogin') {
+          appendLog('#aliyun-login-log', '当前登录状态：' + status);
+        }
+
+        // 文档状态：WaitLogin / ScanSuccess / LoginSuccess / QRCodeExpired
+        if (status === 'LoginSuccess' || status === 'success' || status === 'confirmed') {
+          // 显示登录成功提示
+          $('#aliyun-login-result-row').show();
+          $('#aliyun-login-result').html('<strong style="color:#2e7d32;">✓ 登录成功</strong><br>已保存 token，可以开始使用备份功能');
+          // 隐藏二维码
+          $('#aliyun-qrcode-box').hide();
+          // 隐藏日志
+          $('#aliyun-login-log').hide();
+          stopPolling();
+          // 刷新状态，更新界面
+          setTimeout(function() {
+            refreshStatus();
+          }, 500);
+        } else if (status === 'QRCodeExpired' || status === 'expired') {
+          $('#aliyun-login-result-row').hide();
+          $('#aliyun-login-result').text('二维码已过期，请重新获取。');
+          stopPolling();
+        } else if (status === 'ScanSuccess') {
+          // 扫码成功，显示提示
+          $('#aliyun-login-result-row').show();
+          $('#aliyun-login-result').html('<span style="color:#2196f3;">已扫码，请在手机上确认登录...</span>');
+        } else if (status === 'WaitLogin') {
+          // 等待扫码
+          $('#aliyun-login-result-row').hide();
+        }
+      });
+    }, 2500);
+  }
+
+  function stopPolling() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+  }
+
+    $(function () {
+    // 初始化加载登录状态（但不启动轮询）
+    api('get_login_status', {}, function (res) {
+      if (res.status) {
+        setLoginStatus('已登录（可直接测试上传）', true);
+      } else {
+        setLoginStatus('未登录', false);
+      }
+    });
+
+    // 左侧菜单切换
+    $('.bt-w-menu p').on('click', function () {
+      $(this).addClass('bgw').siblings().removeClass('bgw');
+      var pane = $(this).attr('data-pane');
+      $('.aliyun-pane').removeClass('aliyun-pane-active');
+      if (pane) {
+        $('#' + pane).addClass('aliyun-pane-active');
+      }
+      if (pane === 'aliyun-pane-web' && !sitesLoaded) {
+        loadSites();
+      }
+      if (pane === 'aliyun-pane-db' && !databasesLoaded) {
+        loadDatabases();
+      }
+      if (pane === 'aliyun-pane-config') {
+        // 每次切换到偏好设置页面时都重新加载配置
+        loadConfig();
+      }
+      if (pane === 'aliyun-pane-about') {
+        // 切换到使用说明页面时加载版本信息和开发人员信息
+        loadVersionInfo();
+        loadDevInfo();
+      }
+    });
+
+    // 刷新状态
+    $('#aliyun-btn-refresh-status').on('click', function () {
+      refreshStatus();
+    });
+
+    // 获取二维码 / 更换账号
+    $('#aliyun-btn-get-qrcode').on('click', function () {
+      var btnText = $(this).text();
+      // 如果是"更换账号"，先确认并退出登录
+      if (btnText === '更换账号') {
+        if (!confirm('确定要更换账号吗？这将退出当前登录的账号。')) {
+          return;
+        }
+        // 调用退出登录
+        api('logout', {}, function(res) {
+          // 无论成功与否，都重新获取二维码
+          refreshStatus(); // 先刷新状态
+          setTimeout(function() {
+            $('#aliyun-login-log').html('').hide();
+            $('#aliyun-login-result-row').hide();
+            getQrcode();
+          }, 300);
+        });
+      } else {
+        getQrcode();
+      }
+    });
+    
+    // 获取二维码的公共函数
+    function getQrcode() {
+      $('#aliyun-login-log').html('').hide();
+      $('#aliyun-login-result-row').hide();
+      $('#aliyun-login-result').text('正在获取二维码...');
+      api('get_qr_code', {}, function (res) {
+        if (!res.status) {
+          $('#aliyun-login-result-row').show();
+          $('#aliyun-login-result').html('<span style="color:#f44336;">获取二维码失败：' + (res.msg || '未知错误') + '</span>');
+          return;
+        }
+        var data = res.data || {};
+        var qrUrl = data.qr_url;
+        var loginId = data.login_id;
+        if (!qrUrl || !loginId) {
+          $('#aliyun-login-result-row').show();
+          $('#aliyun-login-result').html('<span style="color:#f44336;">返回数据缺少 qr_url 或 login_id，请检查后端解析字段。</span>');
+          appendLog('#aliyun-login-log', JSON.stringify(res, null, 2));
+          $('#aliyun-login-log').show();
+          return;
+        }
+
+        $('#aliyun-qrcode-img').attr('src', qrUrl);
+        $('#aliyun-qrcode-box').show();
+        $('#aliyun-login-result-row').show();
+        $('#aliyun-login-result').html('<span style="color:#2196f3;">请使用阿里云盘 App 扫描上方二维码</span>');
+        appendLog('#aliyun-login-log', '二维码已生成，login_id=' + loginId);
+        $('#aliyun-login-log').show();
+
+        startPolling(loginId);
+      });
+    }
+    
+    // 退出登录
+    $('#aliyun-btn-logout').on('click', function () {
+      if (!confirm('确定要退出登录吗？')) {
+        return;
+      }
+      api('logout', {}, function(res) {
+        if (res.status) {
+          layer && layer.msg ? layer.msg('已退出登录') : alert('已退出登录');
+          refreshStatus();
+          $('#aliyun-qrcode-box').hide();
+          $('#aliyun-login-result-row').hide();
+        } else {
+          layer && layer.msg ? layer.msg('退出登录失败：' + (res.msg || '未知错误')) : alert('退出登录失败');
+        }
+      });
+    });
+
+    // 测试上传
+    $('#aliyun-btn-test-upload').on('click', function () {
+      $('#aliyun-upload-log').html('').hide();
+      appendLog('#aliyun-upload-log', '开始执行测试上传...');
+      api('test_upload', { parent_file_id: currentParentId }, function (res) {
+        if (!res.status) {
+          appendLog('#aliyun-upload-log', '测试上传失败：' + (res.msg || '未知错误'));
+          return;
+        }
+        appendLog('#aliyun-upload-log', '测试上传成功，返回数据：');
+        appendLog('#aliyun-upload-log', JSON.stringify(res.data || {}, null, 2));
+      });
+    });
+
+    // 渲染文件列表
+    function renderFiles(items) {
+      var $box = $('#aliyun-files-container');
+      var $body = $('#aliyun-files-body');
+      $body.empty();
+      if (!items || !items.length) {
+        $body.append('<tr><td colspan="4">当前目录暂无文件。</td></tr>');
+        $box.show();
+        return;
+      }
+      items.forEach(function (item) {
+        var name = item.name || '';
+        var type = item.type || '';
+        var size = item.size || 0;
+        var updated = item.updated_at || '';
+        var sizeText = size;
+        if (size > 1024 * 1024 * 1024) {
+          sizeText = (size / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+        } else if (size > 1024 * 1024) {
+          sizeText = (size / 1024 / 1024).toFixed(2) + ' MB';
+        } else if (size > 1024) {
+          sizeText = (size / 1024).toFixed(2) + ' KB';
+        } else {
+          sizeText = size + ' B';
+        }
+        var tr = '<tr data-file-id="' + (item.file_id || '') + '" data-type="' + type + '" data-name="' + $('<div>').text(name).html() + '">' +
+          '<td title="' + $('<div>').text(name).html() + '">' + $('<div>').text(name).html() + '</td>' +
+          '<td>' + (type === 'folder' ? '文件夹' : '文件') + '</td>' +
+          '<td>' + sizeText + '</td>' +
+          '<td>' + updated + '</td>' +
+          '</tr>';
+        $body.append(tr);
+      });
+      $box.show();
+    }
+
+    // 刷新根目录文件列表
+    $('#aliyun-btn-list-root').on('click', function () {
+      // 初始为授权目录（若有），由后端根据 token_info.folder_id 决定
+      currentParentId = 'root';
+      navStack = [];
+      $('#aliyun-current-path').text('/');
+      $('#aliyun-files-body').empty();
+      $('#aliyun-files-container').show();
+      $('#aliyun-files-body').append('<tr><td colspan="4">正在获取文件列表...</td></tr>');
+      api('list_root_files', { parent_file_id: currentParentId }, function (res) {
+        if (!res.status) {
+          $('#aliyun-files-body').empty()
+            .append('<tr><td colspan="4">获取文件列表失败：' + (res.msg || '未知错误') + '</td></tr>');
+          return;
+        }
+        var data = res.data || {};
+        var items = data.items || [];
+        renderFiles(items);
+      });
+    });
+
+    // 点击目录名称进入子目录
+    $('#aliyun-files-body').on('click', 'tr[data-file-id][data-type="folder"]', function () {
+      var fileId = $(this).attr('data-file-id');
+      var name = $(this).attr('data-name') || '';
+      if (!fileId) return;
+      // 入栈当前目录
+      if (currentParentId) {
+        navStack.push({ file_id: currentParentId, name: $('#aliyun-current-path').text() || '/' });
+      }
+      currentParentId = fileId;
+      var curPath = $('#aliyun-current-path').text() || '/';
+      if (!curPath.endsWith('/')) curPath += '/';
+      $('#aliyun-current-path').text(curPath + name);
+
+      $('#aliyun-files-body').empty().append('<tr><td colspan="4">正在获取文件列表...</td></tr>');
+      api('list_root_files', { parent_file_id: currentParentId }, function (res) {
+        if (!res.status) {
+          $('#aliyun-files-body').empty()
+            .append('<tr><td colspan="4">获取文件列表失败：' + (res.msg || '未知错误') + '</td></tr>');
+          return;
+        }
+        var data = res.data || {};
+        var items = data.items || [];
+        renderFiles(items);
+      });
+    });
+
+    // 返回上一级
+    $('#aliyun-btn-go-up').on('click', function () {
+      if (!navStack.length) {
+        currentParentId = 'root';
+        $('#aliyun-current-path').text('/');
+      } else {
+        var prev = navStack.pop();
+        currentParentId = prev.file_id || 'root';
+        $('#aliyun-current-path').text(prev.name || '/');
+      }
+      $('#aliyun-files-body').empty().append('<tr><td colspan="4">正在获取文件列表...</td></tr>');
+      api('list_root_files', { parent_file_id: currentParentId }, function (res) {
+        if (!res.status) {
+          $('#aliyun-files-body').empty()
+            .append('<tr><td colspan="4">获取文件列表失败：' + (res.msg || '未知错误') + '</td></tr>');
+          return;
+        }
+        var data = res.data || {};
+        var items = data.items || [];
+        renderFiles(items);
+      });
+    });
+  });
+
+  // 站点备份：加载站点列表
+  function loadSites() {
+    $('#aliyun-web-body').html('<tr><td colspan="3">正在加载站点列表...</td></tr>');
+    api('web', {}, function (res) {
+      if (!res.status) {
+        $('#aliyun-web-body').html('<tr><td colspan="3">加载站点列表失败：' + (res.msg || '未知错误') + '</td></tr>');
+        return;
+      }
+      var sites = (res.data && res.data.sites) || [];
+      if (!sites.length) {
+        $('#aliyun-web-body').html('<tr><td colspan="3">当前没有可用站点。</td></tr>');
+        return;
+      }
+      var html = '';
+      sites.forEach(function (s) {
+        var checked = s.backup_status === 1 ? 'checked' : '';
+        html += '<tr>' +
+          '<td>' + $('<div>').text(s.name || '').html() + '</td>' +
+          '<td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + $('<div>').text(s.path || '').html() + '</td>' +
+          '<td><input type="checkbox" class="aliyun-web-switch" data-sites-id="' + s.id + '" ' + checked + '></td>' +
+          '</tr>';
+      });
+      $('#aliyun-web-body').html(html);
+      sitesLoaded = true;
+    });
+  }
+
+  // 切换站点备份开关（使用 off 防止重复绑定）
+  $(document).off('change', '.aliyun-web-switch').on('change', '.aliyun-web-switch', function () {
+    var $checkbox = $(this);
+    // 防止重复点击
+    if ($checkbox.data('processing')) {
+      return;
+    }
+    $checkbox.data('processing', true);
+    
+    var sitesId = $checkbox.attr('data-sites-id');
+    var status = $checkbox.is(':checked') ? 1 : 0;
+    api('sw_web', { sites_id: sitesId, status: status }, function (res) {
+      $checkbox.data('processing', false);
+      if (!res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '操作失败', { icon: 2 }) : alert(res.msg || '操作失败');
+        // 失败则回滚勾选状态
+        $checkbox.prop('checked', !status);
+      } else {
+        // 成功时显示简短提示，使用较短的显示时间避免闪烁
+        if (layer && layer.msg) {
+          layer.msg(res.msg || '操作成功', { icon: 1, time: 1000 });
+        } else {
+          console.log(res.msg || '操作成功');
+        }
+      }
+    });
+  });
+
+  // 加载数据库列表
+  function loadDatabases() {
+    $('#aliyun-db-body').html('<tr><td colspan="3">正在加载数据库列表...</td></tr>');
+    api('db_bak', {}, function (res) {
+      if (!res.status) {
+        $('#aliyun-db-body').html('<tr><td colspan="3">加载数据库列表失败：' + (res.msg || '未知错误') + '</td></tr>');
+        return;
+      }
+      var data = res.data || {};
+      var databases = data.database || [];
+      var port = data.port || '3306';
+      var mysql_root = data.mysql_root || '';
+      
+      // 填充配置信息
+      $('#aliyun-db-port').val(port);
+      $('#aliyun-db-password').val(mysql_root);
+      
+      if (!databases.length) {
+        $('#aliyun-db-body').html('<tr><td colspan="3">当前没有可用数据库。</td></tr>');
+        databasesLoaded = true;
+        return;
+      }
+      var html = '';
+      databases.forEach(function (db) {
+        var checked = db.backup_status === 1 ? 'checked' : '';
+        html += '<tr>' +
+          '<td>' + $('<div>').text(db.name || '').html() + '</td>' +
+          '<td>' + $('<div>').text(db.ps || '').html() + '</td>' +
+          '<td><input type="checkbox" class="aliyun-db-switch" data-databases-id="' + db.id + '" ' + checked + '></td>' +
+          '</tr>';
+      });
+      $('#aliyun-db-body').html(html);
+      databasesLoaded = true;
+    });
+  }
+
+  // 保存数据库配置
+  $('#aliyun-btn-save-db-config').on('click', function () {
+    var port = $('#aliyun-db-port').val() || '3306';
+    var mysql_root = $('#aliyun-db-password').val() || '';
+    
+    if (!mysql_root) {
+      layer && layer.msg ? layer.msg('请输入 MySQL root 密码') : alert('请输入 MySQL root 密码');
+      return;
+    }
+    
+    api('db_info', { port: port, mysql_root: mysql_root }, function (res) {
+      if (res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '配置保存成功') : alert(res.msg || '配置保存成功');
+      } else {
+        layer && layer.msg ? layer.msg(res.msg || '配置保存失败') : alert(res.msg || '配置保存失败');
+      }
+    });
+  });
+
+  // 切换数据库备份开关（使用 off 防止重复绑定）
+  $(document).off('change', '.aliyun-db-switch').on('change', '.aliyun-db-switch', function () {
+    var $checkbox = $(this);
+    // 防止重复点击
+    if ($checkbox.data('processing')) {
+      return;
+    }
+    $checkbox.data('processing', true);
+    
+    var databasesId = $checkbox.attr('data-databases-id');
+    var status = $checkbox.is(':checked') ? 1 : 0;
+    api('sw_db', { databases_id: databasesId, status: status }, function (res) {
+      $checkbox.data('processing', false);
+      if (!res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '操作失败', { icon: 2 }) : alert(res.msg || '操作失败');
+        // 失败则回滚勾选状态
+        $checkbox.prop('checked', !status);
+      } else {
+        // 成功时显示简短提示，使用较短的显示时间避免闪烁
+        if (layer && layer.msg) {
+          layer.msg(res.msg || '操作成功', { icon: 1, time: 1000 });
+        } else {
+          console.log(res.msg || '操作成功');
+        }
+        // 操作成功后刷新列表，确保状态同步
+        setTimeout(function() {
+          loadDatabases();
+        }, 200);
+      }
+    });
+  });
+
+  // 自动备份服务：加载计划任务状态
+  function loadCronStatus() {
+    api('crontab', {}, function (res) {
+      if (!res.status) {
+        $('#aliyun-cron-status').text('获取状态失败：' + (res.msg || '未知错误'));
+        return;
+      }
+      var data = res.data || {};
+      var isCron = data.is_cron || 0;
+      $('#aliyun-cron-status').text(isCron ? '已启动' : '未启动');
+      if (data.cron_title) {
+        $('#aliyun-cron-title').text(data.cron_title);
+      }
+    });
+  }
+
+  // 启动自动备份服务
+  $('#aliyun-btn-add-cron').on('click', function () {
+    if (!confirm('确定要启动自动备份服务吗？将在每天凌晨 02:30 自动执行备份任务。')) {
+      return;
+    }
+    api('add_sync_task', {}, function (res) {
+      if (res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '操作成功') : alert(res.msg || '操作成功');
+        loadCronStatus();
+      } else {
+        layer && layer.msg ? layer.msg(res.msg || '操作失败') : alert(res.msg || '操作失败');
+      }
+    });
+  });
+
+  // 停止自动备份服务
+  $('#aliyun-btn-stop-cron').on('click', function () {
+    if (!confirm('确定要停止自动备份服务吗？')) {
+      return;
+    }
+    api('stop_sync_task', {}, function (res) {
+      if (res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '操作成功') : alert(res.msg || '操作成功');
+        loadCronStatus();
+      } else {
+        layer && layer.msg ? layer.msg(res.msg || '操作失败') : alert(res.msg || '操作失败');
+      }
+    });
+  });
+
+  // 手动执行一次备份队列
+  $('#aliyun-btn-start-task').on('click', function () {
+    if (!confirm('确定要立即执行一次备份队列吗？这将压缩并上传所有已启用的站点。')) {
+      return;
+    }
+    api('start_task', {}, function (res) {
+      if (res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '队列开始执行') : alert(res.msg || '队列开始执行');
+      } else {
+        layer && layer.msg ? layer.msg(res.msg || '操作失败') : alert(res.msg || '操作失败');
+      }
+    });
+  });
+
+  // 切换到自动备份服务页面时加载状态
+  $('.bt-w-menu p[data-pane="aliyun-pane-cron"]').on('click', function () {
+    setTimeout(loadCronStatus, 100);
+  });
+
+  // 上传记录：加载日志
+  function loadLogs() {
+    $('#aliyun-log-content').html('<p>正在加载日志...</p>');
+    api('get_log', {}, function (res) {
+      if (!res.status) {
+        $('#aliyun-log-content').html('<p>获取日志失败：' + (res.msg || '未知错误') + '</p>');
+        return;
+      }
+      var data = res.data || {};
+      var logs = data.log || [];
+      if (!logs || logs.length === 0) {
+        $('#aliyun-log-content').html('<p>暂无日志</p>');
+        return;
+      }
+      var html = '';
+      logs.forEach(function (log) {
+        html += '<p style="margin:5px 0; padding:5px; border-bottom:1px solid #eee;">';
+        html += '<strong>执行时间：</strong>' + (log.create_time || '') + ' | ';
+        html += '<strong>' + (log.title || '') + '</strong> | ';
+        html += (log.content || '');
+        html += '</p>';
+      });
+      $('#aliyun-log-content').html(html);
+    });
+  }
+
+  // 刷新日志
+  $('#aliyun-btn-refresh-log').on('click', function () {
+    loadLogs();
+  });
+
+  // 清空日志
+  $('#aliyun-btn-clear-log').on('click', function () {
+    if (!confirm('确定要清空所有日志记录吗？')) {
+      return;
+    }
+    api('remove_log', {}, function (res) {
+      if (res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '操作成功') : alert(res.msg || '操作成功');
+        loadLogs();
+      } else {
+        layer && layer.msg ? layer.msg(res.msg || '操作失败') : alert(res.msg || '操作失败');
+      }
+    });
+  });
+
+  // 切换到上传记录页面时加载日志
+  $('.bt-w-menu p[data-pane="aliyun-pane-log"]').on('click', function () {
+    setTimeout(loadLogs, 100);
+  });
+
+  // 加载偏好设置
+  function loadConfig() {
+    api('my_config', {}, function (res) {
+      if (!res.status) {
+        console.error('加载配置失败：', res.msg || '未知错误');
+        layer && layer.msg ? layer.msg('加载配置失败：' + (res.msg || '未知错误'), { icon: 2 }) : alert('加载配置失败');
+        return;
+      }
+      var data = res.data || {};
+      console.log('加载的配置数据：', data);
+      
+      // 处理数字字段：如果值为空、null、undefined，使用默认值 10
+      // 注意：0 是有效值（表示不限制），不应该被替换为默认值
+      var site_keep = data.site_keep;
+      if (site_keep === undefined || site_keep === null || site_keep === '') {
+        site_keep = '10';
+      }
+      $('#aliyun-config-site-keep').val(String(site_keep));
+      
+      var db_keep = data.db_keep;
+      if (db_keep === undefined || db_keep === null || db_keep === '') {
+        db_keep = '10';
+      }
+      $('#aliyun-config-db-keep').val(String(db_keep));
+      
+      // 处理文本字段：空值显示为空字符串
+      $('#aliyun-config-ext-map').val(data.ext_map !== undefined && data.ext_map !== null ? String(data.ext_map) : '');
+      $('#aliyun-config-exclude-dirs').val(data.exclude_dirs !== undefined && data.exclude_dirs !== null ? String(data.exclude_dirs) : '');
+      
+      configLoaded = true;
+    });
+  }
+
+  // 保存偏好设置
+  $('#aliyun-btn-save-config').on('click', function () {
+    var site_keep = $('#aliyun-config-site-keep').val();
+    var db_keep = $('#aliyun-config-db-keep').val();
+    var ext_map = $('#aliyun-config-ext-map').val();
+    var exclude_dirs = $('#aliyun-config-exclude-dirs').val();
+    
+    // 确保数字字段不为空，如果为空则使用默认值
+    // 注意：0 是有效值（表示不限制），不应该被替换
+    // 使用 === 严格判断，避免类型转换问题
+    if (site_keep === null || site_keep === undefined || site_keep === '') {
+      site_keep = '10';
+    } else {
+      site_keep = String(site_keep).trim();
+      if (site_keep === '') {
+        site_keep = '10';
+      }
+    }
+    
+    if (db_keep === null || db_keep === undefined || db_keep === '') {
+      db_keep = '10';
+    } else {
+      db_keep = String(db_keep).trim();
+      if (db_keep === '') {
+        db_keep = '10';
+      }
+    }
+    
+    // 确保文本字段不为 null 或 undefined
+    if (ext_map === null || ext_map === undefined) {
+      ext_map = '';
+    }
+    if (exclude_dirs === null || exclude_dirs === undefined) {
+      exclude_dirs = '';
+    }
+    
+    var config = {
+      site_keep: String(site_keep),
+      db_keep: String(db_keep),
+      ext_map: String(ext_map),
+      exclude_dirs: String(exclude_dirs)
+    };
+    
+    console.log('保存配置：', config);
+    api('save_config', config, function (res) {
+      console.log('保存配置响应：', res);
+      if (res.status) {
+        layer && layer.msg ? layer.msg(res.msg || '配置保存成功', { icon: 1 }) : alert(res.msg || '配置保存成功');
+        // 保存成功后重新加载配置，确保显示正确
+        setTimeout(function() {
+          loadConfig();
+        }, 300);
+      } else {
+        layer && layer.msg ? layer.msg(res.msg || '配置保存失败', { icon: 2 }) : alert(res.msg || '配置保存失败');
+      }
+    });
+  });
+
+  // 恢复默认配置
+  $('#aliyun-btn-reset-config').on('click', function () {
+    if (!confirm('确定要恢复默认配置吗？')) {
+      return;
+    }
+    $('#aliyun-config-site-keep').val('10');
+    $('#aliyun-config-db-keep').val('10');
+    $('#aliyun-config-ext-map').val('');
+    $('#aliyun-config-exclude-dirs').val('');
+    
+    // 保存默认配置
+    var config = {
+      site_keep: '10',
+      db_keep: '10',
+      ext_map: '',
+      exclude_dirs: ''
+    };
+    
+    api('save_config', config, function (res) {
+      if (res.status) {
+        layer && layer.msg ? layer.msg('已恢复默认配置', { icon: 1 }) : alert('已恢复默认配置');
+        setTimeout(function() {
+          loadConfig();
+        }, 500);
+      } else {
+        layer && layer.msg ? layer.msg('恢复默认配置失败', { icon: 2 }) : alert('恢复默认配置失败');
+      }
+    });
+  });
+  
+  // 加载版本信息
+  function loadVersionInfo() {
+    // 从后端获取当前版本
+    api('index', {}, function(res) {
+      var currentVersion = '1.0'; // 默认版本
+      if (res.status && res.data && res.data.version) {
+        currentVersion = res.data.version;
+      }
+      $('#aliyun-current-version').text(currentVersion);
+      
+      // 检查更新（使用闭包保存版本号）
+      $('#aliyun-btn-check-version').off('click').on('click', function() {
+        checkVersionUpdate(currentVersion);
+      });
+    });
+  }
+  
+  // 检查版本更新
+  function checkVersionUpdate(currentVersion) {
+    $('#aliyun-version-info').show();
+    $('#aliyun-version-message').html('<span style="color:#666;">正在检查更新...</span>');
+    $('#aliyun-version-changelog').hide();
+    $('#aliyun-version-download').hide();
+    
+    // 通过插件 API 调用，避免跨域问题
+    api('get_version', {}, function(res) {
+      if (res.status && res.data) {
+        var latestVersion = res.data.version || '';
+        var downloadUrl = res.data.download_url || '';
+        var changelog = res.data.changelog || '';
+        
+        if (compareVersion(latestVersion, currentVersion) > 0) {
+          // 有新版本
+          $('#aliyun-version-message').html(
+            '<span style="color:#f56c6c;">发现新版本：' + latestVersion + '</span>'
+          );
+          if (changelog) {
+            $('#aliyun-version-changelog-content').text(changelog);
+            $('#aliyun-version-changelog').show();
+          }
+          if (downloadUrl) {
+            $('#aliyun-version-download-link').attr('href', downloadUrl);
+            $('#aliyun-version-download').show();
+          }
+        } else {
+          // 已是最新版本
+          $('#aliyun-version-message').html(
+            '<span style="color:#67c23a;">✓ 已是最新版本</span>'
+          );
+        }
+      } else {
+        $('#aliyun-version-message').html(
+          '<span style="color:#e6a23c;">检查更新失败：' + (res.msg || '未知错误') + '</span>'
+        );
+      }
+    });
+  }
+  
+  // 版本号比较函数
+  function compareVersion(v1, v2) {
+    var v1parts = v1.split('.').map(Number);
+    var v2parts = v2.split('.').map(Number);
+    var maxLen = Math.max(v1parts.length, v2parts.length);
+    
+    for (var i = 0; i < maxLen; i++) {
+      var v1part = v1parts[i] || 0;
+      var v2part = v2parts[i] || 0;
+      if (v1part > v2part) return 1;
+      if (v1part < v2part) return -1;
+    }
+    return 0;
+  }
+  
+  // 加载开发人员及赞助商信息
+  function loadDevInfo() {
+    $('#aliyun-dev-info-list').html('<div style="text-align:center; color:#999;">加载中...</div>');
+    
+    // 通过插件 API 调用，避免跨域问题
+    api('get_dev_info', {}, function(res) {
+      if (res.status && res.data && res.data.length > 0) {
+        var html = '<table class="table table-hover table-bordered" style="margin-top:10px;">';
+        html += '<thead><tr><th>昵称</th><th>角色</th><th>网站</th><th>联系方式</th></tr></thead>';
+        html += '<tbody>';
+        res.data.forEach(function(item) {
+          html += '<tr>';
+          html += '<td>' + (item.name || '-') + '</td>';
+          html += '<td>' + (item.role || '-') + '</td>';
+          html += '<td>';
+          if (item.website) {
+            html += '<a href="' + item.website + '" target="_blank" style="color:#409eff;">' + item.website + '</a>';
+          } else {
+            html += '-';
+          }
+          html += '</td>';
+          html += '<td>' + (item.contact || '-') + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        $('#aliyun-dev-info-list').html(html);
+      } else {
+        $('#aliyun-dev-info-list').html('<div style="text-align:center; color:#999;">暂无信息</div>');
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
+

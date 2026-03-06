@@ -1,0 +1,15 @@
+{
+  "title": "阿里云盘免费备份插件",
+  "name": "aliyundrive_backup",
+  "ps": "备份网站/数据库到阿里云盘（明心安备）",
+  "version": "0.1",
+  "author": "custom",
+  "home": "https://www.aa1.cn",
+  "date": "2026-03-05",
+  "default": false,
+  "shell": "python3",
+  "tip": "阿里云盘备份插件，支持扫码登录与文件备份",
+  "checks": "bt",
+  "pid": "1"
+}
+

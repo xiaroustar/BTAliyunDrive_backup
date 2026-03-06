@@ -1,0 +1,10 @@
+{
+  "title": "阿里云盘免费备份插件",
+  "name": "aliyundrive_backup",
+  "ps": "备份网站/数据库到阿里云盘（明心安备）",
+  "versions": "1.0",
+  "checks": "/www/server/panel/plugin/aliyundrive_backup",
+  "author": "明心科技",
+  "home": "https://www.aa1.cn"
+}
+
