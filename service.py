@@ -69,7 +69,6 @@ def ensure_folder_in_drive(backup_main, parent_file_id, folder_name, drive_id=No
     import json
     import requests
     
-    # 如果未提供 drive_id 或 access_token，从 token 文件获取
     if not access_token or not drive_id:
         token_file = os.path.join(plugin_path, "token.json")
         if not os.path.exists(token_file):
@@ -114,7 +113,6 @@ def ensure_folder_in_drive(backup_main, parent_file_id, folder_name, drive_id=No
                 if item.get("name") == folder_name and item.get("type") == "folder":
                     return item.get("file_id")
         
-        # 如果没有，创建文件夹
         create_url = BASE_URL + "/adrive/v1.0/openFile/create"
         create_body = {
             "drive_id": drive_id,
@@ -207,7 +205,6 @@ def ensure_backup_folder(backup_main):
         else:
             print("列出目录失败，HTTP 状态码: {}".format(list_resp.status_code))
 
-        # 如果没有，创建备份文件夹
         print("正在创建备份目录: {}".format(backup_folder_name))
         create_url = BASE_URL + "/adrive/v1.0/openFile/create"
         create_body = {
@@ -390,7 +387,6 @@ def main():
                 print("上传成功: {}".format(zip_name))
                 backup_main.add_log("备份网站", "成功上传站点 {} 到 {}".format(site_name, zip_name))
                 
-                # 清理旧备份（如果设置了数量限制）
                 if site_keep > 0:
                     file_prefix = "{}_web_".format(site_name)
                     deleted_count, cleanup_msg = backup_main.cleanup_old_backups(
@@ -523,7 +519,6 @@ def main():
                         print("上传成功: {}".format(zip_name))
                         backup_main.add_log("备份数据库", "成功上传数据库 {} 到 {}".format(db_name, zip_name))
                         
-                        # 清理旧备份（如果设置了数量限制）
                         if db_keep > 0:
                             file_prefix = "{}_db_".format(db_name)
                             deleted_count, cleanup_msg = backup_main.cleanup_old_backups(

@@ -185,7 +185,6 @@ class aliyundrive_backup_main:
         if not token_info:
             return None, _public_return(False, "尚未登录，请先扫码登录。")
 
-        # 如果已经有有效的 drive 信息，直接返回
         drive_id = token_info.get("default_drive_id") or token_info.get("effective_drive_id")
         if drive_id:
             return token_info, None
@@ -263,7 +262,6 @@ class aliyundrive_backup_main:
                 "style": "folder",
                 "server_id": server_id
             }
-            # 禁用 SSL 证书验证（如果中转服务器证书有问题）
             headers = {"X-BT-Server-ID": server_id}
             resp = requests.post(url, json=payload, headers=headers, timeout=10, verify=False)
             if resp.status_code != 200:
@@ -318,7 +316,6 @@ class aliyundrive_backup_main:
             # 使用中转接口查询登录状态
             url = PROXY_URL + "/oauth/qrcode/{}/status".format(login_id)
             server_id = _get_server_id()
-            # 禁用 SSL 证书验证（如果中转服务器证书有问题）
             headers = {"X-BT-Server-ID": server_id}
             resp = requests.get(url, headers=headers, timeout=10, verify=False)
             if resp.status_code != 200:
@@ -334,7 +331,6 @@ class aliyundrive_backup_main:
             status = data.get("status")
 
             if status == "LoginSuccess":
-                # 如果本地已经有 access_token，则说明此前已成功换取过，无需重复换 token
                 existing_token = _load_token()
                 if existing_token and existing_token.get("access_token"):
                     return _public_return(
@@ -356,7 +352,6 @@ class aliyundrive_backup_main:
                     "grant_type": "authorization_code",
                     "server_id": server_id
                 }
-                # 按文档使用 JSON 体，禁用 SSL 证书验证（如果中转服务器证书有问题）
                 headers = {"X-BT-Server-ID": server_id}
                 t_resp = requests.post(token_url, json=token_payload, headers=headers, timeout=10, verify=False)
                 if t_resp.status_code != 200:
@@ -436,8 +431,6 @@ class aliyundrive_backup_main:
             }
 
             init_url = BASE_URL + "/adrive/v1.0/openFile/create"
-            # 如果前端传了 parent_file_id，则以当前目录为准，否则：
-            # 若用户以 style=folder 授权，则优先使用该 folder_id，其次 root
             parent_file_id = getattr(get, "parent_file_id", None)
             if not parent_file_id:
                 parent_file_id = token_info.get("folder_id") or "root"
@@ -741,8 +734,6 @@ class aliyundrive_backup_main:
                 if not db_one:
                     return _public_return(False, "数据库不存在。")
                 date_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-                # 先检查是否已存在，如果存在则先删除
-                # 使用 select() 方法（兼容性更好）
                 existing_list = self.Db('database').where('databases_id=?', databases_id).select()
                 if existing_list and isinstance(existing_list, list) and len(existing_list) > 0:
                     # 已存在记录，先删除
@@ -843,13 +834,9 @@ class aliyundrive_backup_main:
                 site_keep, db_keep, ext_map, exclude_dirs
             ))
             
-            # 确保数字字段不为空，且是有效的数字字符串
-            # 注意：如果值为 '0'，这是有效的（表示不限制），不应该被替换为默认值
-            # 使用 is None 或 == '' 来判断，不要用 if not，因为 '0' 会被当作 False
             if site_keep is None or site_keep == '' or site_keep == 'None':
                 site_keep = '10'
             else:
-                # 验证是否为有效数字，如果是有效数字就保留原值（包括 '0'）
                 try:
                     int(site_keep)  # 验证是否为数字，包括 0
                     # 如果是有效数字，保留原值（包括 '0'）
@@ -859,10 +846,8 @@ class aliyundrive_backup_main:
             if db_keep is None or db_keep == '' or db_keep == 'None':
                 db_keep = '10'
             else:
-                # 验证是否为有效数字，如果是有效数字就保留原值（包括 '0'）
                 try:
                     int(db_keep)  # 验证是否为数字，包括 0
-                    # 如果是有效数字，保留原值（包括 '0'）
                 except (ValueError, TypeError):
                     db_keep = '10'
             
@@ -995,8 +980,6 @@ class aliyundrive_backup_main:
                     # 直接返回字符串形式，包括空字符串和 '0'
                     return str(val)
                 elif isinstance(item, (list, tuple)):
-                    # conf 表结构：id, key, val
-                    # 如果返回的是列表/元组，索引 0 是 id，索引 1 是 key，索引 2 是 val
                     if len(item) > 2:
                         val = item[2]  # 第三列是 val
                     elif len(item) > 1:
@@ -1650,7 +1633,6 @@ class aliyundrive_backup_main:
                 if isinstance(log, dict):
                     formatted_logs.append(log)
                 elif isinstance(log, (list, tuple)):
-                    # 如果是列表/元组，尝试转换为字典
                     try:
                         # 假设列顺序：id, title, content, create_time
                         if len(log) >= 4:

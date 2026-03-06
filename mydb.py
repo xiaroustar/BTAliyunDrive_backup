@@ -219,11 +219,9 @@ class Sql():
             return conn_res
         try:
             if id:
-                # 如果提供了 id，覆盖 where 条件
                 self.__OPT_WHERE = " WHERE id=?"
                 self.__OPT_PARAM = (id,)
             elif not self.__OPT_WHERE:
-                # 如果没有 where 条件也没有 id，报错
                 self.__close()
                 return "error: 删除操作需要提供 where 条件或 id"
             sql = "DELETE FROM " + self.__DB_TABLE + self.__OPT_WHERE

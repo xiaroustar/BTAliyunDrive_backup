@@ -406,7 +406,6 @@
       $qrcodeBox.hide();
       $('#aliyun-login-log').hide();
       
-      // 显示登录成功提示（如果之前有）
       if ($resultRow.is(':visible')) {
         $('#aliyun-login-result').text('已成功登录阿里云盘，可以开始使用备份功能');
       }
@@ -442,7 +441,6 @@
       }
       var logined = res.data && res.data.logined;
       setLoginStatus('', logined);
-      // 如果已经确认登录，则强制停止轮询，避免重复日志
       if (logined) {
         stopPolling();
         // 隐藏二维码区域
@@ -555,7 +553,6 @@
     // 获取二维码 / 更换账号
     $('#aliyun-btn-get-qrcode').on('click', function () {
       var btnText = $(this).text();
-      // 如果是"更换账号"，先确认并退出登录
       if (btnText === '更换账号') {
         if (!confirm('确定要更换账号吗？这将退出当前登录的账号。')) {
           return;
@@ -1045,7 +1042,6 @@
     var ext_map = $('#aliyun-config-ext-map').val();
     var exclude_dirs = $('#aliyun-config-exclude-dirs').val();
     
-    // 确保数字字段不为空，如果为空则使用默认值
     // 注意：0 是有效值（表示不限制），不应该被替换
     // 使用 === 严格判断，避免类型转换问题
     if (site_keep === null || site_keep === undefined || site_keep === '') {

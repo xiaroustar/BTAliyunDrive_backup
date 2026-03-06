@@ -86,9 +86,7 @@ class aliyundrive_backup:
             return _public_return(False, "服务器未安装 requests 模块，请先安装后重试。")
 
         try:
-            # 通过中转接口获取二维码（中转接口会处理 APP_ID 和 APP_SECRET）
             url = PROXY_URL + "/oauth/authorize/qrcode"
-            # 禁用 SSL 证书验证（如果中转服务器证书有问题）
             resp = requests.post(url, json={}, timeout=10, verify=False)
             if resp.status_code != 200:
                 return _public_return(False, "获取二维码失败，HTTP 状态码: {}".format(resp.status_code))
@@ -137,7 +135,6 @@ class aliyundrive_backup:
         try:
             # 通过中转接口查询登录状态
             url = PROXY_URL + "/oauth/qrcode/{}/status".format(login_id)
-            # 禁用 SSL 证书验证（如果中转服务器证书有问题）
             resp = requests.get(url, timeout=10, verify=False)
             if resp.status_code != 200:
                 return _public_return(False, "查询登录状态失败，HTTP 状态码: {}".format(resp.status_code))
@@ -152,7 +149,6 @@ class aliyundrive_backup:
             status = data.get("status")
 
             if status == "LoginSuccess":
-                # 如果本地已经有 access_token，则说明此前已成功换取过，无需重复换 token
                 existing_token = _load_token()
                 if existing_token and existing_token.get("access_token"):
                     return _public_return(
