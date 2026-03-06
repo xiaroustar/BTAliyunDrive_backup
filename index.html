@@ -511,14 +511,8 @@
   }
 
     $(function () {
-    // 初始化加载登录状态（但不启动轮询）
-    api('get_login_status', {}, function (res) {
-      if (res.status) {
-        setLoginStatus('已登录（可直接测试上传）', true);
-      } else {
-        setLoginStatus('未登录', false);
-      }
-    });
+    // 打开插件时自动刷新登录状态（使用 index 接口，避免 get_login_status 不存在导致一直显示未登录）
+    refreshStatus();
 
     // 左侧菜单切换
     $('.bt-w-menu p').on('click', function () {
