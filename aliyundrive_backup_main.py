@@ -110,13 +110,117 @@ def _load_token():
 
 
 def _save_token(data):
+    """
+    保存 token，并在本地补充 expires_at / update_time 字段，便于后续自动刷新。
+    data: 中转接口返回的 data，通常包含 access_token / refresh_token / expires_in 等。
+    """
     try:
+        now = int(time.time())
+        # 兼容字符串/浮点类型
+        expires_in = data.get("expires_in")
+        try:
+            expires_in_int = int(float(expires_in)) if expires_in is not None else 0
+        except Exception:
+            expires_in_int = 0
+        if expires_in_int <= 0:
+            # 默认按 2 小时处理，预留 5 分钟刷新窗口
+            expires_in_int = 7200
+        # 记录最近一次写入时间 & 预估过期时间（提前 5 分钟）
+        data["expires_in"] = expires_in_int
+        data["update_time"] = now
+        # 提前 300 秒刷新，避免边界问题
+        data["expires_at"] = now + expires_in_int
+
         os.makedirs(os.path.dirname(TOKEN_FILE), exist_ok=True)
         with open(TOKEN_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         return {"status": False, "msg": "保存 token 失败: {}".format(e)}
     return {"status": True, "msg": "ok"}
+
+
+def _get_valid_token(auto_refresh=True):
+    """
+    获取一个“可用”的 token：
+    - 若本地没有 token，返回错误
+    - 若 token 即将过期或已过期，并且存在 refresh_token，则通过中转接口自动刷新
+    - 刷新成功后会重新写入 TOKEN_FILE
+    返回 (token_info, err)，err 为 None 或 {'status': False, 'msg': '...'}
+    """
+    token_info = _load_token()
+    if not token_info:
+        return None, _public_return(False, "尚未登录，请先扫码登录。")
+
+    now = int(time.time())
+
+    # 计算过期时间：优先 expires_at，其次 update_time + expires_in
+    expires_at = token_info.get("expires_at")
+    if not isinstance(expires_at, (int, float)):
+        try:
+            expires_in = int(float(token_info.get("expires_in", 0)))
+        except Exception:
+            expires_in = 0
+        update_time = token_info.get("update_time")
+        if isinstance(update_time, (int, float)) and expires_in > 0:
+            expires_at = int(update_time) + int(expires_in)
+        else:
+            expires_at = None
+
+    # 如果还有足够时间，直接返回（预留 5 分钟刷新窗口）
+    if expires_at and now < int(expires_at) - 300:
+        return token_info, None
+
+    # 不允许自动刷新，或没有 refresh_token，则直接提示过期
+    refresh_token = token_info.get("refresh_token")
+    if not auto_refresh or not refresh_token:
+        return None, _public_return(False, "登录状态已过期，请重新扫码登录。")
+
+    if requests is None:
+        return None, _public_return(False, "服务器未安装 requests 模块，请先安装后重试。")
+
+    # 尝试通过中转接口刷新 token
+    try:
+        server_id = _get_server_id()
+        url = PROXY_URL + "/refresh_token"
+        payload = {
+            "refresh_token": refresh_token,
+            "server_id": server_id,
+        }
+        headers = {"X-BT-Server-ID": server_id}
+        resp = requests.post(url, json=payload, headers=headers, timeout=10, verify=False)
+        if resp.status_code != 200:
+            # 尝试解析错误信息，便于排查
+            err_msg = ""
+            try:
+                err_json = resp.json()
+                err_code = err_json.get("code")
+                err_message = err_json.get("message")
+                err_msg = "code={}, message={}".format(err_code, err_message)
+            except Exception:
+                try:
+                    err_msg = resp.text
+                except Exception:
+                    err_msg = ""
+            return None, _public_return(
+                False,
+                "刷新 access_token 失败，HTTP 状态码: {}，响应: {}".format(resp.status_code, err_msg),
+            )
+
+        result = resp.json()
+        if not result.get("status"):
+            return None, _public_return(False, "刷新 access_token 失败: {}".format(result.get("msg", "未知错误")))
+
+        data = result.get("data") or {}
+        if not data.get("access_token"):
+            return None, _public_return(False, "刷新 access_token 失败: 返回数据中缺少 access_token")
+
+        save_res = _save_token(data)
+        if not save_res["status"]:
+            return None, save_res
+
+        return data, None
+    except Exception as e:
+        return None, _public_return(False, "刷新 access_token 异常: {}".format(e))
 
 
 def _public_return(status, msg, data=None):
@@ -408,9 +512,10 @@ class aliyundrive_backup_main:
         if requests is None:
             return _public_return(False, "服务器未安装 requests 模块，请先安装后重试。")
 
-        token_info = _load_token()
-        if not token_info:
-            return _public_return(False, "尚未登录，请先扫码登录。")
+        # 确保 token 可用，必要时自动刷新
+        token_info, token_err = _get_valid_token(auto_refresh=True)
+        if token_err:
+            return token_err
 
         access_token = token_info.get("access_token")
         if not access_token:
@@ -495,9 +600,10 @@ class aliyundrive_backup_main:
         if requests is None:
             return _public_return(False, "服务器未安装 requests 模块，请先安装后重试。")
 
-        token_info = _load_token()
-        if not token_info:
-            return _public_return(False, "尚未登录，请先扫码登录。")
+        # 确保 token 可用，必要时自动刷新
+        token_info, token_err = _get_valid_token(auto_refresh=True)
+        if token_err:
+            return token_err
 
         access_token = token_info.get("access_token")
         if not access_token:
@@ -1042,9 +1148,78 @@ class aliyundrive_backup_main:
             crontab.crontab().AddCrontab(data)
             if hasattr(public, 'WriteLog'):
                 public.WriteLog('[阿里云盘备份]插件', '新增定时守护任务')
+            
+            # 同时创建 token 刷新任务（每小时执行一次）
+            self._ensure_token_refresh_task()
+            
             return _public_return(True, "操作成功!")
         except Exception as e:
             return _public_return(False, "创建计划任务失败: {}".format(e))
+    
+    def _ensure_token_refresh_task(self):
+        """
+        确保 token 刷新计划任务存在（每小时执行一次）
+        直接调用 Python 脚本，避免依赖面板端口
+        """
+        if public is None:
+            return
+        try:
+            import crontab
+            refresh_cron_title = "阿里云盘备份-Token刷新"
+            res = public.M('crontab').where('name=?', refresh_cron_title).find()
+            if res:
+                return  # 已存在，无需重复创建
+            
+            # 创建每小时执行一次的任务（直接调用 Python 方法）
+            # 使用 btpython 执行一个简单的 Python 脚本来刷新 token
+            refresh_script = '''#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import sys
+import os
+sys.path.insert(0, "/www/server/panel")
+sys.path.insert(0, "/www/server/panel/plugin/aliyundrive_backup")
+try:
+    from aliyundrive_backup_main import _get_valid_token
+    token_info, token_err = _get_valid_token(auto_refresh=True)
+    if token_err:
+        print("Token刷新失败: {}".format(token_err.get("msg", "未知错误")))
+    else:
+        print("Token刷新成功")
+except Exception as e:
+    print("Token刷新异常: {}".format(e))
+'''
+            refresh_script_path = os.path.join(plugin_path, "refresh_token.py")
+            try:
+                with open(refresh_script_path, "w", encoding="utf-8") as f:
+                    f.write(refresh_script)
+                os.chmod(refresh_script_path, 0o755)
+            except Exception as e:
+                if hasattr(public, 'WriteLog'):
+                    public.WriteLog('[阿里云盘备份]插件', '创建Token刷新脚本失败: {}'.format(e))
+                return
+            
+            # 创建每小时执行一次的任务
+            data = {
+                'name': refresh_cron_title,
+                'type': 'hour',
+                'where1': '',
+                'sBody': 'btpython {} > /dev/null 2>&1'.format(refresh_script_path),
+                'backupTo': 'localhost',
+                'sType': 'toShell',
+                'hour': '',
+                'minute': '0',
+                'week': '',
+                'sName': '',
+                'urladdress': '',
+                'save': ''
+            }
+            crontab.crontab().AddCrontab(data)
+            if hasattr(public, 'WriteLog'):
+                public.WriteLog('[阿里云盘备份]插件', '新增Token刷新任务（每小时）')
+        except Exception as e:
+            # 失败不影响主流程，只记录日志
+            if hasattr(public, 'WriteLog'):
+                public.WriteLog('[阿里云盘备份]插件', '创建Token刷新任务失败: {}'.format(e))
 
     def stop_sync_task(self, get):
         """
@@ -1474,9 +1649,10 @@ class aliyundrive_backup_main:
         if requests is None:
             return False, "服务器未安装 requests 模块", None
 
-        token_info = _load_token()
-        if not token_info:
-            return False, "尚未登录，请先扫码登录", None
+        # 确保 token 可用，必要时自动刷新
+        token_info, token_err = _get_valid_token(auto_refresh=True)
+        if token_err:
+            return False, token_err.get("msg", "获取 token 失败"), None
 
         access_token = token_info.get("access_token")
         if not access_token:
@@ -1684,9 +1860,19 @@ class aliyundrive_backup_main:
     def index(self, get):
         """
         在面板中可用于检测插件是否正常，以及是否已登录。
+        会自动尝试刷新 token，确保登录状态始终有效。
         """
-        token_info = _load_token()
+        # 尝试获取有效 token（自动刷新）
+        token_info, token_err = _get_valid_token(auto_refresh=True)
         logined = bool(token_info and token_info.get("access_token"))
+        
+        # 如果刷新失败，但之前有 token，说明 refresh_token 可能也过期了
+        refresh_failed = False
+        if token_err and not logined:
+            # 检查是否是因为刷新失败
+            old_token = _load_token()
+            if old_token and old_token.get("refresh_token"):
+                refresh_failed = True
         
         # 读取版本信息
         version = "1.0"  # 默认版本
@@ -1700,9 +1886,35 @@ class aliyundrive_backup_main:
         except:
             pass
         
-        return _public_return(True, "aliyundrive_backup 插件正常", {
+        msg = "aliyundrive_backup 插件正常"
+        if refresh_failed:
+            msg = "登录状态已过期，请重新扫码登录"
+        
+        return _public_return(True, msg, {
             "logined": logined,
-            "version": version
+            "version": version,
+            "token_refreshed": token_info is not None and not refresh_failed
+        })
+    
+    def poke_token(self, get):
+        """
+        周期性刷新 token，用于计划任务调用（例如每小时执行一次）。
+        即使 token 还没过期，也会尝试刷新，确保保持活跃。
+        """
+        if requests is None:
+            return _public_return(False, "服务器未安装 requests 模块，请先安装后重试。")
+        
+        token_info, token_err = _get_valid_token(auto_refresh=True)
+        if token_err:
+            return token_err
+        
+        if not token_info or not token_info.get("access_token"):
+            return _public_return(False, "尚未登录，请先扫码登录。")
+        
+        return _public_return(True, "Token 刷新成功，登录状态保持有效。", {
+            "access_token": token_info.get("access_token")[:20] + "..." if token_info.get("access_token") else None,
+            "expires_at": token_info.get("expires_at"),
+            "update_time": token_info.get("update_time")
         })
 
     def get_dev_info(self, get):

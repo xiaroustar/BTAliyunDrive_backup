@@ -31,7 +31,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from aliyundrive_backup_main import aliyundrive_backup_main
+    from aliyundrive_backup_main import aliyundrive_backup_main, _get_valid_token, _load_token
 except ImportError:
     print("无法导入 aliyundrive_backup_main 模块")
     sys.exit(1)
@@ -70,20 +70,14 @@ def ensure_folder_in_drive(backup_main, parent_file_id, folder_name, drive_id=No
     import requests
     
     if not access_token or not drive_id:
-        token_file = os.path.join(plugin_path, "token.json")
-        if not os.path.exists(token_file):
-            print("无法获取 token 信息，请先登录")
-            return None
-        try:
-            with open(token_file, "r", encoding="utf-8") as f:
-                token_info = json.load(f)
-        except Exception as e:
-            print("读取 token 文件失败: {}".format(e))
-            return None
-        if not token_info:
+        # 使用 _get_valid_token 自动刷新 token
+        token_info, token_err = _get_valid_token(auto_refresh=True)
+        if token_err or not token_info:
+            print("无法获取 token 信息: {}".format(token_err.get("msg") if token_err else "token 为空"))
             return None
         token_info, drive_err = backup_main._ensure_drive_info(token_info)
         if not token_info or (drive_err and not drive_err.get("status")):
+            print("获取 drive 信息失败: {}".format(drive_err.get("msg") if drive_err else "未知错误"))
             return None
         access_token = access_token or token_info.get("access_token")
         drive_id = drive_id or (token_info.get("effective_drive_id") or token_info.get("default_drive_id"))
@@ -146,17 +140,11 @@ def ensure_backup_folder(backup_main):
     """
     backup_folder_name = get_backup_folder_name(backup_main)
     print("使用备份文件夹名称: {}".format(backup_folder_name))
-    import json
-    token_file = os.path.join(plugin_path, "token.json")
-    if not os.path.exists(token_file):
-        print("无法获取 token 信息，请先登录")
-        return None
     
-    try:
-        with open(token_file, "r", encoding="utf-8") as f:
-            token_info = json.load(f)
-    except Exception as e:
-        print("读取 token 文件失败: {}".format(e))
+    # 使用 _get_valid_token 自动刷新 token
+    token_info, token_err = _get_valid_token(auto_refresh=True)
+    if token_err or not token_info:
+        print("无法获取 token 信息: {}".format(token_err.get("msg") if token_err else "token 为空"))
         return None
     
     if not token_info:
@@ -273,23 +261,17 @@ def main():
     print("文件过滤配置 - 排除扩展名: {}, 排除目录: {}".format(ext_map, exclude_dirs))
     print("备份数量限制 - 站点: {}, 数据库: {}".format(site_keep if site_keep > 0 else '不限制', db_keep if db_keep > 0 else '不限制'))
     
-    # 获取 token 信息，用于后续创建子目录
-    import json
-    token_file = os.path.join(plugin_path, "token.json")
-    token_info = None
+    # 获取 token 信息，用于后续创建子目录（自动刷新）
+    token_info, token_err = _get_valid_token(auto_refresh=True)
     drive_id = None
     access_token = None
-    if os.path.exists(token_file):
-        try:
-            with open(token_file, "r", encoding="utf-8") as f:
-                token_info = json.load(f)
-            if token_info:
-                token_info, _ = backup_main._ensure_drive_info(token_info)
-                if token_info:
-                    drive_id = token_info.get("effective_drive_id") or token_info.get("default_drive_id")
-                    access_token = token_info.get("access_token")
-        except Exception as e:
-            print("读取 token 信息失败: {}".format(e))
+    if token_err or not token_info:
+        print("无法获取 token 信息: {}".format(token_err.get("msg") if token_err else "token 为空"))
+    else:
+        token_info, _ = backup_main._ensure_drive_info(token_info)
+        if token_info:
+            drive_id = token_info.get("effective_drive_id") or token_info.get("default_drive_id")
+            access_token = token_info.get("access_token")
 
     # 读取已启用备份的站点
     try:
