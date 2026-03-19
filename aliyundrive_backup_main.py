@@ -139,11 +139,12 @@ def _save_token(data):
     return {"status": True, "msg": "ok"}
 
 
-def _get_valid_token(auto_refresh=True):
+def _get_valid_token(auto_refresh=True, force_refresh=False):
     """
     获取一个“可用”的 token：
     - 若本地没有 token，返回错误
     - 若 token 即将过期或已过期，并且存在 refresh_token，则通过中转接口自动刷新
+    - force_refresh=True 时跳过过期判断，直接尝试用 refresh_token 刷新（用于 401 后重试）
     - 刷新成功后会重新写入 TOKEN_FILE
     返回 (token_info, err)，err 为 None 或 {'status': False, 'msg': '...'}
     """
@@ -151,29 +152,29 @@ def _get_valid_token(auto_refresh=True):
     if not token_info:
         return None, _public_return(False, "尚未登录，请先扫码登录。")
 
-    now = int(time.time())
-
-    # 计算过期时间：优先 expires_at，其次 update_time + expires_in
-    expires_at = token_info.get("expires_at")
-    if not isinstance(expires_at, (int, float)):
-        try:
-            expires_in = int(float(token_info.get("expires_in", 0)))
-        except Exception:
-            expires_in = 0
-        update_time = token_info.get("update_time")
-        if isinstance(update_time, (int, float)) and expires_in > 0:
-            expires_at = int(update_time) + int(expires_in)
-        else:
-            expires_at = None
-
-    # 如果还有足够时间，直接返回（预留 5 分钟刷新窗口）
-    if expires_at and now < int(expires_at) - 300:
-        return token_info, None
-
-    # 不允许自动刷新，或没有 refresh_token，则直接提示过期
     refresh_token = token_info.get("refresh_token")
-    if not auto_refresh or not refresh_token:
-        return None, _public_return(False, "登录状态已过期，请重新扫码登录。")
+    if not refresh_token:
+        return None, _public_return(False, "登录状态已过期（无 refresh_token），请重新扫码登录。")
+
+    if not force_refresh:
+        now = int(time.time())
+        # 计算过期时间：优先 expires_at，其次 update_time + expires_in
+        expires_at = token_info.get("expires_at")
+        if not isinstance(expires_at, (int, float)):
+            try:
+                expires_in = int(float(token_info.get("expires_in", 0)))
+            except Exception:
+                expires_in = 0
+            update_time = token_info.get("update_time")
+            if isinstance(update_time, (int, float)) and expires_in > 0:
+                expires_at = int(update_time) + int(expires_in)
+            else:
+                expires_at = None
+        # 如果还有足够时间，直接返回（预留 5 分钟刷新窗口）
+        if expires_at and now < int(expires_at) - 300:
+            return token_info, None
+        if not auto_refresh:
+            return None, _public_return(False, "登录状态已过期，请重新扫码登录。")
 
     if requests is None:
         return None, _public_return(False, "服务器未安装 requests 模块，请先安装后重试。")
@@ -208,11 +209,13 @@ def _get_valid_token(auto_refresh=True):
 
         result = resp.json()
         if not result.get("status"):
-            return None, _public_return(False, "刷新 access_token 失败: {}".format(result.get("msg", "未知错误")))
+            msg = result.get("msg", "未知错误")
+            hint = " 若长期未使用，refresh_token 可能已失效，请到插件内重新扫码登录。" if "expired" in str(msg).lower() or "token" in str(msg).lower() else ""
+            return None, _public_return(False, "刷新 access_token 失败: {}{}".format(msg, hint))
 
         data = result.get("data") or {}
         if not data.get("access_token"):
-            return None, _public_return(False, "刷新 access_token 失败: 返回数据中缺少 access_token")
+            return None, _public_return(False, "刷新 access_token 失败: 返回数据中缺少 access_token，请重新扫码登录。")
 
         save_res = _save_token(data)
         if not save_res["status"]:
@@ -1675,14 +1678,13 @@ except Exception as e:
         if not drive_id:
             return False, "未获取到 drive_id", None
 
-        try:
-            file_size = os.path.getsize(local_file_path)
+        def do_upload(access_token, drive_id):
+            """执行单次上传，返回 (success, msg, complete_data_or_None)"""
             headers = {
                 "Authorization": "Bearer {}".format(access_token),
                 "Content-Type": "application/json;charset=utf-8"
             }
-
-            # 1. 初始化上传
+            file_size = os.path.getsize(local_file_path)
             init_url = BASE_URL + "/adrive/v1.0/openFile/create"
             body = {
                 "drive_id": drive_id,
@@ -1702,22 +1704,19 @@ except Exception as e:
                     err_msg = "code={}, message={}".format(err_code, err_message)
                 except Exception:
                     err_msg = init_resp.text
-                return False, "初始化上传失败，HTTP 状态码: {}，响应: {}".format(init_resp.status_code, err_msg), None
+                return False, "初始化上传失败，HTTP 状态码: {}，响应: {}".format(init_resp.status_code, err_msg), None, (init_resp.status_code, err_msg)
 
             init_data = init_resp.json()
             part_info_list = init_data.get("part_info_list") or []
             upload_url = part_info_list[0].get("upload_url") if part_info_list else None
-
             if not upload_url:
-                return False, "初始化返回中未找到 upload_url", None
+                return False, "初始化返回中未找到 upload_url", None, (None, None)
 
-            # 2. PUT 文件内容
             with open(local_file_path, 'rb') as f:
                 put_resp = requests.put(upload_url, data=f, timeout=300)
                 if put_resp.status_code not in (200, 201):
-                    return False, "上传文件数据失败，HTTP 状态码: {}".format(put_resp.status_code), None
+                    return False, "上传文件数据失败，HTTP 状态码: {}".format(put_resp.status_code), None, (None, None)
 
-            # 3. 完成上传
             complete_url = BASE_URL + "/adrive/v1.0/openFile/complete"
             complete_body = {
                 "drive_id": init_data.get("drive_id"),
@@ -1726,10 +1725,33 @@ except Exception as e:
             }
             complete_resp = requests.post(complete_url, headers=headers, json=complete_body, timeout=30)
             if complete_resp.status_code != 200:
-                return False, "完成上传失败，HTTP 状态码: {}".format(complete_resp.status_code), None
-
+                return False, "完成上传失败，HTTP 状态码: {}".format(complete_resp.status_code), None, (None, None)
             complete_data = complete_resp.json()
-            return True, "上传成功", complete_data
+            return True, "上传成功", complete_data, (None, None)
+
+        try:
+            success, msg, complete_data, (status_code, err_msg) = do_upload(access_token, drive_id)
+            if success:
+                return True, msg, complete_data
+            # 若为 401 且为 Token 过期，尝试强制刷新后重试一次
+            if status_code == 401 and err_msg and "AccessTokenExpired" in str(err_msg):
+                token_info2, token_err2 = _get_valid_token(auto_refresh=True, force_refresh=True)
+                if token_err2 or not token_info2 or not token_info2.get("access_token"):
+                    return False, "Token 已过期，刷新失败，请重新扫码登录: {}".format(
+                        token_err2.get("msg", "未知错误") if token_err2 else "无有效 token"
+                    ), None
+                token_info2, drive_err2 = self._ensure_drive_info(token_info2)
+                if drive_err2 or not token_info2:
+                    return False, msg, None
+                access_token2 = token_info2.get("access_token")
+                drive_id2 = token_info2.get("effective_drive_id") or token_info2.get("default_drive_id")
+                if not access_token2 or not drive_id2:
+                    return False, msg, None
+                success2, msg2, complete_data2, _ = do_upload(access_token2, drive_id2)
+                if success2:
+                    return True, msg2, complete_data2
+                return False, msg2, None
+            return False, msg, None
         except Exception as e:
             return False, "上传过程异常: {}".format(e), None
 
